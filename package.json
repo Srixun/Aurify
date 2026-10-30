@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "luaparse": "0.3.1",
-    "three": "0.180.0"
+    "three": "0.186.1"
   },
   "devDependencies": {
     "prettier": "3.6.2"

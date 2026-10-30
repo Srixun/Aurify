@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: Aurify
+## Notes: Guild map dots and names; automatic dungeon and raid combat logging and bounded character snapshots for Aurify.
+## Author: Aurify
+## Version: 1.0.5
+## X-Aurify-Managed: 1
+## SavedVariables: AurifyDB
+
+Aurify.lua

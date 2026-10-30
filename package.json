@@ -1,0 +1,24 @@
+{
+  "name": "aurify",
+  "version": "2.0.6",
+  "private": false,
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "node tools/check.mjs",
+    "test": "node tools/build-native-tests.mjs && node --test --test-concurrency=1 tests/addon-updates-native.test.mjs tests/addons.test.mjs tests/character-renderer.test.mjs tests/characters-native.test.mjs tests/combat-efficiency.test.mjs tests/forever-client.test.mjs tests/host-efficiency.test.mjs tests/snapshot-efficiency.test.mjs tests/updates.test.mjs tests/publish-update.test.mjs",
+    "build": "node tools/build-companion.mjs",
+    "format": "prettier --write \"companion/renderer/*.{js,mjs,cjs}\" \"tests/**/*.mjs\" \"tools/**/*.mjs\" \"package.json\" \"package-lock.json\"",
+    "format:check": "prettier --check \"companion/renderer/*.{js,mjs,cjs}\" \"tests/**/*.mjs\" \"tools/**/*.mjs\" \"package.json\" \"package-lock.json\""
+  },
+  "dependencies": {
+    "luaparse": "0.3.1",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}

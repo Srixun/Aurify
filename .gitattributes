@@ -1,0 +1,3 @@
+* text=auto eol=lf
+companion/renderer/CHROMIUM-CREDITS.html -text -diff
+tests/fixtures/** -text -diff

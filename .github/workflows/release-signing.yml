@@ -1,0 +1,129 @@
+name: Build and request release signing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: aurify-release-signing
+  cancel-in-progress: false
+
+jobs:
+  build-and-sign:
+    if: github.ref == 'refs/heads/main'
+    environment: code-signing
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact workflow commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use .NET SDK 8.0.427
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.427
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check source
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Download and verify pinned wow.export archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'portable-wow-export-win-x64-0.2.19.zip'
+          Invoke-WebRequest -Uri 'https://github.com/Kruithne/wow.export/releases/download/0.2.19/portable-wow-export-win-x64-0.2.19.zip' -OutFile $archive
+          $item = Get-Item -LiteralPath $archive
+          if ($item.Length -ne 335122647) {
+            throw "Pinned wow.export archive length mismatch: $($item.Length)"
+          }
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = '5d3a937b07ea9922ae56ad51b137736f26cf6bc3c2886173c6e4a2873f14b57c'
+          if ($actualHash -cne $expectedHash) {
+            throw "Pinned wow.export archive SHA-256 mismatch: $actualHash"
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "AURIFY_RENDERER_ARCHIVE=$archive"
+
+      - name: Build unsigned Aurify executable
+        run: npm run build
+
+      - name: Verify built release
+        run: npm run check
+
+      - name: Upload unsigned build provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aurify-unsigned-provenance
+          path: |
+            dist/Aurify-release.json
+            dist/Aurify-models.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload unsigned executable for signing
+        id: unsigned
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aurify-unsigned-exe
+          path: dist/Aurify.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Submit manual SignPath signing request
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: aurify
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: aurify-exe
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed
+
+      - name: Verify signed executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = Join-Path $PWD 'signed\Aurify.exe'
+          if (-not (Test-Path -LiteralPath $expected -PathType Leaf)) {
+            throw 'SignPath output did not contain signed/Aurify.exe'
+          }
+          $files = @(Get-ChildItem -LiteralPath (Join-Path $PWD 'signed') -Recurse -File)
+          if ($files.Count -ne 1 -or $files[0].FullName -cne (Resolve-Path -LiteralPath $expected).Path) {
+            throw 'SignPath output must contain exactly one file named Aurify.exe'
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $expected
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or $null -eq $signature.SignerCertificate) {
+            throw "Aurify.exe Authenticode signature is not valid: $($signature.Status)"
+          }
+
+      - name: Upload verified signed executable
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aurify-signed-exe
+          path: signed/Aurify.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
